@@ -1,25 +1,25 @@
 module Rails3JQueryAutocomplete
   module Orm
     module ActiveRecord
-      def get_autocomplete_order(method, options, model=nil)
+      def active_record_get_autocomplete_order(method, options, model=nil)
         order = options[:order]
 
         table_prefix = model ? "#{model.table_name}." : ""
-        order || "#{table_prefix}#{method} ASC"
+        order || "LOWER(#{table_prefix}#{method}) ASC"
       end
 
-      def get_autocomplete_items(parameters)
+      def active_record_get_autocomplete_items(parameters)
         model   = parameters[:model]
         term    = parameters[:term]
-        method  = parameters[:method]
         options = parameters[:options]
+        method  = options[:hstore] ? options[:hstore][:method] : parameters[:method]
         scopes  = Array(options[:scopes])
         where   = options[:where]
         limit   = get_autocomplete_limit(options)
-        order   = get_autocomplete_order(method, options, model)
+        order   = active_record_get_autocomplete_order(method, options, model)
 
 
-        items = model.scoped
+        items = (::Rails::VERSION::MAJOR * 10 + ::Rails::VERSION::MINOR) >= 40 ? model.where(nil) : model.scoped
 
         scopes.each { |scope| items = items.send(scope) } unless scopes.empty?
 
@@ -40,7 +40,11 @@ module Rails3JQueryAutocomplete
         table_name = model.table_name
         is_full_search = options[:full]
         like_clause = (postgres?(model) ? 'ILIKE' : 'LIKE')
-        ["LOWER(#{table_name}.#{method}) #{like_clause} ?", "#{(is_full_search ? '%' : '')}#{term.downcase}%"]
+        if options[:hstore]
+          ["LOWER(#{table_name}.#{method} -> '#{options[:hstore][:key]}') LIKE ?", "#{(is_full_search ? '%' : '')}#{term.downcase}%"]
+        else
+          ["LOWER(#{table_name}.#{method}) #{like_clause} ?", "#{(is_full_search ? '%' : '')}#{term.downcase}%"]
+        end
       end
 
       def postgres?(model)
